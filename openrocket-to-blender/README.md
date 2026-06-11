@@ -1,8 +1,8 @@
 # OpenRocket → Blender
 
-[![Skill](https://img.shields.io/badge/WorkBuddy-Skill-blue)](https://github.com/shawn89890916/openrocket-to-blender)
 [![Blender](https://img.shields.io/badge/Blender-3.x+-orange)](https://www.blender.org/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.x-blue)](https://www.python.org/)
 
 Convert [OpenRocket](https://openrocket.info/) rocket design parameters into **watertight, 3D-printable Blender models** in one step. Zero external dependencies — pure `bpy` + `bmesh`.
 
@@ -18,12 +18,6 @@ Takes a parameter dictionary (nose cone, body tubes, transitions, fins — all i
 Every part is **mathematically watertight**: each edge shared by exactly 2 faces → ready for slicing and 3D printing.
 
 ## Quick Start
-
-### As a WorkBuddy Skill
-
-Install the skill in WorkBuddy via marketplace or local import. When you describe rocket parameters, the skill automatically generates a Blender-ready Python script.
-
-### As a Standalone Script
 
 Copy `scripts/rocket_builder.py` into Blender's Scripting workspace and run:
 
@@ -59,7 +53,7 @@ Or paste the generated standalone script directly into the Blender console.
 ```
 openrocket-to-blender/
 ├── README.md
-├── SKILL.md                          # WorkBuddy skill definition
+├── SKILL.md                          # AI assistant prompt template
 ├── scripts/
 │   └── rocket_builder.py             # Core builder module
 └── references/
