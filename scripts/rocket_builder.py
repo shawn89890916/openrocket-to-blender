@@ -1,4 +1,4 @@
-"""
+r"""
 OpenRocket → Blender 火箭模型构建器
 =====================================
 将 OpenRocket 设计参数转化为 Blender 3D 打印模型。
@@ -25,12 +25,12 @@ import bpy
 import bmesh
 import math
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = [
     "ring", "quad_ring", "quad_ring_inner", "cap_ring",
     "build_shell", "make_ellipsoid_nose", "make_conical_nose",
     "make_body_tube", "make_transition", "make_fins",
-    "finalize", "make_mat", "build_rocket", "DEFAULT_PARAMS",
+    "finalize", "make_mat", "validate_params", "build_rocket", "DEFAULT_PARAMS",
 ]
 
 
@@ -93,6 +93,97 @@ DEFAULT_PARAMS = {
         "fins":       (0.12, 0.12, 0.18),
     },
 }
+
+
+def _require_positive(name, value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a positive number")
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a positive number")
+
+
+def _require_positive_int(name, value, minimum=1):
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}")
+
+
+def _validate_shell(name, outer_radius, wall):
+    _require_positive(f"{name}.outer_radius", outer_radius)
+    _require_positive(f"{name}.wall", wall)
+    if wall >= outer_radius:
+        raise ValueError(f"{name}.wall must be smaller than its outer radius")
+
+
+def validate_params(params):
+    """Validate the parameter dictionary before creating Blender data."""
+    if not isinstance(params, dict):
+        raise ValueError("params must be a dictionary")
+
+    prefix = params.get("prefix", "Rocket")
+    if not isinstance(prefix, str) or not prefix.strip():
+        raise ValueError("prefix must be a non-empty string")
+
+    _require_positive_int("segments", params.get("segments", 48), minimum=3)
+    _require_positive_int("ellipse_slices", params.get("ellipse_slices", 48))
+    _require_positive("scale", params.get("scale", 0.001))
+
+    nose = params.get("nose")
+    if not isinstance(nose, dict):
+        raise ValueError("nose must be a dictionary")
+    nose_type = nose.get("type", "ellipsoid")
+    if nose_type not in {"ellipsoid", "conical"}:
+        raise ValueError("nose.type must be 'ellipsoid' or 'conical'")
+    _require_positive("nose.length", nose.get("length"))
+    _validate_shell("nose", nose.get("base_radius_outer"), nose.get("wall"))
+
+    tip_outer = nose.get("tip_radius_outer", 0.5)
+    tip_inner = nose.get("tip_radius_inner", 0.2)
+    _require_positive("nose.tip_radius_outer", tip_outer)
+    _require_positive("nose.tip_radius_inner", tip_inner)
+    if tip_inner >= tip_outer:
+        raise ValueError("nose.tip_radius_inner must be smaller than nose.tip_radius_outer")
+    if tip_outer >= nose["base_radius_outer"]:
+        raise ValueError("nose.tip_radius_outer must be smaller than nose.base_radius_outer")
+
+    body_tubes = params.get("body_tubes", [])
+    transitions = params.get("transitions", [])
+    if not isinstance(body_tubes, list) or not isinstance(transitions, list):
+        raise ValueError("body_tubes and transitions must be lists")
+    if transitions and len(body_tubes) != len(transitions) + 1:
+        raise ValueError("body_tubes must contain exactly one more item than transitions")
+
+    for index, tube in enumerate(body_tubes):
+        if not isinstance(tube, dict):
+            raise ValueError(f"body_tubes[{index}] must be a dictionary")
+        _require_positive(f"body_tubes[{index}].length", tube.get("length"))
+        _validate_shell(
+            f"body_tubes[{index}]", tube.get("radius_outer"), tube.get("wall")
+        )
+
+    for index, transition in enumerate(transitions):
+        if not isinstance(transition, dict):
+            raise ValueError(f"transitions[{index}] must be a dictionary")
+        _require_positive(f"transitions[{index}].length", transition.get("length"))
+        front = transition.get("radius_front_outer")
+        rear = transition.get("radius_rear_outer")
+        wall = transition.get("wall")
+        _validate_shell(f"transitions[{index}].front", front, wall)
+        _validate_shell(f"transitions[{index}].rear", rear, wall)
+
+    fins = params.get("fins")
+    if fins is not None:
+        if not isinstance(fins, dict):
+            raise ValueError("fins must be a dictionary")
+        if not body_tubes:
+            raise ValueError("fins require at least one body tube")
+        _require_positive_int("fins.count", fins.get("count"))
+        for key in ("root_chord", "tip_chord", "height", "thickness"):
+            _require_positive(f"fins.{key}", fins.get(key))
+        sweep = fins.get("sweep")
+        if isinstance(sweep, bool) or not isinstance(sweep, (int, float)):
+            raise ValueError("fins.sweep must be a non-negative number")
+        if not math.isfinite(sweep) or sweep < 0:
+            raise ValueError("fins.sweep must be a non-negative number")
 
 
 # ================================================================
@@ -203,9 +294,9 @@ def make_ellipsoid_nose(bm, params, z_top=0.0, slices=None):
     for i in range(slices + 1):
         z = z_top + L * i / slices
         t = (z - z_bot) / L  # ∈ [-1, 0]
-        r_o = max(params["tip_radius_outer"],
+        r_o = max(params.get("tip_radius_outer", 0.5),
                   R_o * math.sqrt(max(0.0, 1.0 - t * t)))
-        r_i = max(params["tip_radius_inner"],
+        r_i = max(params.get("tip_radius_inner", 0.2),
                   R_i * math.sqrt(max(0.0, 1.0 - t * t)))
 
         ro_all.append(ring(bm, r_o, z, seg))
@@ -392,7 +483,9 @@ def make_mat(name, rgb):
         name: 材质名称
         rgb:  (r, g, b) 浮点三元组
     """
-    mat = bpy.data.materials.new(name)
+    mat = bpy.data.materials.get(name)
+    if mat is None:
+        mat = bpy.data.materials.new(name)
     mat.use_nodes = True
     bsdf = None
     for n in mat.node_tree.nodes:
@@ -420,19 +513,23 @@ def build_rocket(params=None):
         params: 参数字典，为 None 时使用 DEFAULT_PARAMS
 
     Returns:
-        [obj_nose, obj_tubes, obj_transitions, obj_fins]
-        各零件对象列表
+        (obj_nose, obj_segments, obj_fins)
+        obj_segments contains both body tubes and transitions in axial order.
     """
     if params is None:
         params = DEFAULT_PARAMS
 
+    validate_params(params)
+
     prefix  = params.get("prefix", "Rocket")
     scale   = params.get("scale", 0.001)
     seg     = params.get("segments", 48)
+    ellipse_slices = params.get("ellipse_slices", 48)
 
     # 更新全局默认 (ring 函数引用)
     DEFAULT_PARAMS["segments"] = seg
     DEFAULT_PARAMS["scale"] = scale
+    DEFAULT_PARAMS["ellipse_slices"] = ellipse_slices
 
     # --- 清理旧对象 ---
     for obj in list(bpy.data.objects):
@@ -468,18 +565,12 @@ def build_rocket(params=None):
 
     # 2) 箭体管
     obj_tubes = []
-    for i, bt in enumerate(params.get("body_tubes", [])):
-        if i == 0:
-            # 如果存在级间断，箭体管在级间断之前
-            pass
 
     # 收集所有段并计算 Z 轴位置
     # 顺序: 头锥 → [body_tubes 和 transitions 交替] → fins
     # 根据参数结构，body_tubes 和 transitions 按顺序交叉
     # 但参数结构是 body_tubes 列表 + transitions 列表
     # 这里默认: nose → body_tubes[0] → transitions[0] → body_tubes[1] → fins
-
-    z_positions = [("nose", z_cur)]
 
     # 交错放置管和锥
     bt_idx = 0

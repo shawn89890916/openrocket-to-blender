@@ -4,7 +4,9 @@
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.x-blue)](https://www.python.org/)
 
-Convert [OpenRocket](https://openrocket.info/) rocket design parameters into **watertight, 3D-printable Blender models** in one step. Zero external dependencies — pure `bpy` + `bmesh`.
+Build closed-manifold, 3D-printable rocket parts in Blender from dimensions transcribed from an [OpenRocket](https://openrocket.info/) design. Zero external dependencies — pure `bpy` + `bmesh`.
+
+> This project currently accepts a Python parameter dictionary. It does not parse `.ork` files. OpenRocket 23.09 and later already provide an official OBJ exporter for direct model transfer; this builder is useful when you want Blender-native, dimension-driven geometry with explicit wall thickness.
 
 ## What It Does
 
@@ -15,7 +17,7 @@ Takes a parameter dictionary (nose cone, body tubes, transitions, fins — all i
 - **Conical transitions** — tapered transition sections between different tube diameters
 - **Trapezoidal fins** — N blades evenly distributed around Z-axis, adjustable sweep angle
 
-Every part is **mathematically watertight**: each edge shared by exactly 2 faces → ready for slicing and 3D printing.
+Each generated part is a closed two-manifold mesh: every edge is shared by exactly two faces. The included Blender regression test checks this property. Run your slicer's geometry checks before manufacturing because manifold topology alone does not detect every possible self-intersection or invalid design dimension.
 
 ## Quick Start
 
@@ -46,14 +48,23 @@ params = {
 build_rocket(params)
 ```
 
-Or paste the generated standalone script directly into the Blender console.
+Or paste the generated standalone script directly into the Blender console. Invalid dimensions such as a wall that is as thick as its outer radius are rejected before any Blender objects are created.
+
+## Choosing the Right Workflow
+
+- Use OpenRocket's built-in `File > Export as > Wavefront OBJ` for a faithful transfer of a complete `.ork` design, including component placement and optional appearances.
+- Use this builder when you have a small supported design and want separate Blender-native shell objects generated from a concise dimension dictionary.
+- This version supports ellipsoid/conical nose cones, body tubes, conical transitions, and trapezoidal fins. Pods, parallel stages, freeform fins, rail buttons, motors, decals, and direct `.ork` import are outside the current scope.
 
 ## File Structure
 
 ```
 openrocket-to-blender/
 ├── README.md
+├── LICENSE
 ├── SKILL.md                          # AI assistant prompt template
+├── tests/
+│   └── blender_test.py               # Headless Blender regression tests
 ├── scripts/
 │   └── rocket_builder.py             # Core builder module
 └── references/
@@ -88,7 +99,7 @@ See `references/parameters.md` for the complete parameter dictionary.
 ```
 r(z) = R × sqrt(1 - ((z - L) / L)^2)
 ```
-48 longitudinal slices, adjacent rings connected with quad strips. Tip sealed with a small flat disk (r ≈ 0.5 mm).
+The number of longitudinal slices is configurable with `ellipse_slices`. Adjacent rings are connected with quad strips. The tip is sealed with a small flat disk (r ≈ 0.5 mm by default).
 
 ## Watertight Guarantee
 
@@ -97,7 +108,17 @@ r(z) = R × sqrt(1 - ((z - L) / L)^2)
 | Tube / Cone | `build_shell`: outer + inner + top ring + bottom ring |
 | Ellipsoid | 48-slice multi-ring: outer surface + inner surface + tip cap + base ring |
 | Fins | 8 vertices → 6 closed quad faces |
-| All parts | `remove_doubles` + `recalc_face_normals` |
+| All parts | Parameter validation + `remove_doubles` + `recalc_face_normals` |
+
+## Tests
+
+Run the regression suite inside Blender so it uses Blender's real `bpy` and `bmesh` implementations:
+
+```powershell
+& "C:\Program Files\Blender Foundation\Blender 4.5\blender.exe" --background --python tests/blender_test.py
+```
+
+The suite verifies closed-manifold topology, configurable ellipsoid resolution, documented minimum nose parameters, invalid wall rejection, and material reuse across rebuilds.
 
 ## Dependencies
 
@@ -107,4 +128,4 @@ No pip installs, no external packages.
 
 ## License
 
-MIT
+[MIT](LICENSE)

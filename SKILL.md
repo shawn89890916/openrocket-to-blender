@@ -14,7 +14,7 @@ Converts OpenRocket rocket design parameters into Blender 3D-printable models in
 - **Thin-walled body tubes** — inner/outer surfaces plus annular end caps, fully sealed
 - **Conical transitions** — matches different front and rear tube diameters
 - **Trapezoidal fins** (N blades, evenly distributed) — adjustable sweep angle
-- **Mathematically watertight parts** — every edge shared by exactly 2 faces
+- **Closed-manifold parts** — every edge shared by exactly 2 faces
 - **Pure bpy + bmesh** — zero external dependencies, paste directly into Blender Scripting console
 
 ## When to Use
@@ -61,7 +61,7 @@ After writing the script:
 - **No sharp tip on nose cone** — ellipsoid nose tip min radius ≥ 0.5mm (tiny flat disk cap)
 - **All `obj.location` = (0, 0, 0)** — vertex Z coordinates are absolute, no offset needed
 - **Apply SCALE inside `finalize()`** on every vertex — never use `bpy.ops.transform_apply`
-- **Every edge shared by exactly 2 faces** — this is the necessary and sufficient condition for watertightness
+- **Every edge shared by exactly 2 faces** — this verifies closed two-manifold topology; still reject invalid dimensions and advise slicer checks
 
 ### 4. Blender Pitfalls (Built into `scripts/rocket_builder.py`)
 

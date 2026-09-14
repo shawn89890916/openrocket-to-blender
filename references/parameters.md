@@ -91,7 +91,7 @@ Where: L = nose cone length, R = base radius, z ∈ [0, L]
        z=0 → r→0 (tip),   z=L → r=R (base)
 ```
 
-Internally uses 48 longitudinal slices. Adjacent slices connected with quad strips.
+Uses `ellipse_slices` longitudinal slices (48 by default). Adjacent slices connect with quad strips.
 Tip capped with a tiny flat disk (min_radius) to prevent non-manifold vertex convergence.
 
 ## Watertight Guarantee
